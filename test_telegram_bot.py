@@ -145,3 +145,48 @@ def test_voice_message_transcribed(monkeypatch, tmp_path):
     classify.assert_called_once_with(fake_text, db_file)
     update.message.reply_text.assert_called_once()
     assert "Food" in update.message.reply_text.call_args.args[0]
+
+
+def test_category_management_flow(monkeypatch, tmp_path):
+    db_file = tmp_path / "test.db"
+    monkeypatch.setenv("TELEGRAM_TOKEN", "TOKEN123")
+    monkeypatch.setattr(db, "DB_PATH", db_file)
+    monkeypatch.setattr(telegram_bot, "DB_PATH", db_file)
+    db.init_db(db_file)
+
+    app = create_application()
+    handler = app.handlers[0][1]
+
+    context = MagicMock()
+    context.user_data = {}
+
+    async def call(text: str):
+        update = MagicMock()
+        update.message = MagicMock()
+        update.message.text = text
+        update.message.reply_text = AsyncMock()
+        await handler.callback(update, context)
+        return update.message.reply_text
+
+    # Create category
+    asyncio.run(call("Создать категорию ➕"))
+    assert context.user_data["step"] == "new_category"
+    asyncio.run(call("Food"))
+    assert context.user_data == {}
+    assert db.list_categories(db_file)[0]["name"] == "Food"
+
+    # Rename category
+    asyncio.run(call("Переименовать категорию ✏️"))
+    assert context.user_data["step"] == "rename_select"
+    asyncio.run(call("Food"))
+    assert context.user_data["step"] == "rename_name"
+    asyncio.run(call("Groceries"))
+    assert context.user_data == {}
+    assert db.list_categories(db_file)[0]["name"] == "Groceries"
+
+    # Delete category
+    asyncio.run(call("Удалить категорию 🗑️"))
+    assert context.user_data["step"] == "delete_select"
+    asyncio.run(call("Groceries"))
+    assert context.user_data == {}
+    assert db.list_categories(db_file) == []

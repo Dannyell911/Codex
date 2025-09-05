@@ -18,10 +18,12 @@ from db import (
     DB_PATH,
     add_transaction,
     create_category,
+    delete_category,
     get_balance,
     get_transactions_for_month,
     init_db,
     list_categories,
+    update_category,
 )
 from llm import classify_and_add
 from speech import transcribe
@@ -31,7 +33,8 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["Добавить доход 💰", "Добавить расход 💸"],
         ["Показать баланс 📊", "Отчёт за месяц 📅"],
-        ["Помощь ❓"],
+        ["Создать категорию ➕", "Переименовать категорию ✏️"],
+        ["Удалить категорию 🗑️", "Помощь ❓"],
     ],
     resize_keyboard=True,
 )
@@ -113,6 +116,52 @@ def create_application(token: Optional[str] = None) -> Application:
             await update.message.reply_text(msg, reply_markup=MAIN_KEYBOARD)
             return
 
+        if context.user_data.get("step") == "new_category":
+            create_category(text, DB_PATH)
+            context.user_data.clear()
+            await update.message.reply_text(
+                f"Категория '{text}' добавлена ✅", reply_markup=MAIN_KEYBOARD
+            )
+            return
+
+        if context.user_data.get("step") == "rename_select":
+            categories = {row["name"]: row["id"] for row in list_categories(DB_PATH)}
+            cat_id = categories.get(text)
+            if cat_id is None:
+                keyboard = ReplyKeyboardMarkup([[name] for name in categories], resize_keyboard=True)
+                await update.message.reply_text(
+                    "Выбери категорию из списка 🗂", reply_markup=keyboard
+                )
+                return
+            context.user_data["cat_id"] = cat_id
+            context.user_data["step"] = "rename_name"
+            await update.message.reply_text("Новое имя? ✏️")
+            return
+
+        if context.user_data.get("step") == "rename_name":
+            update_category(context.user_data["cat_id"], text, DB_PATH)
+            context.user_data.clear()
+            await update.message.reply_text(
+                "Категория обновлена ✅", reply_markup=MAIN_KEYBOARD
+            )
+            return
+
+        if context.user_data.get("step") == "delete_select":
+            categories = {row["name"]: row["id"] for row in list_categories(DB_PATH)}
+            cat_id = categories.get(text)
+            if cat_id is None:
+                keyboard = ReplyKeyboardMarkup([[name] for name in categories], resize_keyboard=True)
+                await update.message.reply_text(
+                    "Выбери категорию из списка 🗂", reply_markup=keyboard
+                )
+                return
+            delete_category(cat_id, DB_PATH)
+            context.user_data.clear()
+            await update.message.reply_text(
+                "Категория удалена 🗑️", reply_markup=MAIN_KEYBOARD
+            )
+            return
+
         if text == "Добавить доход 💰":
             context.user_data["type"] = "income"
             context.user_data["step"] = "category"
@@ -160,6 +209,43 @@ def create_application(token: Optional[str] = None) -> Application:
             keyboard = ReplyKeyboardMarkup([[o] for o in options], resize_keyboard=True)
             await update.message.reply_text(
                 "Выбери месяц 🗓", reply_markup=keyboard
+            )
+            return
+
+        if text == "Создать категорию ➕":
+            context.user_data["step"] = "new_category"
+            await update.message.reply_text("Название категории? 📝")
+            return
+
+        if text == "Переименовать категорию ✏️":
+            categories = list_categories(DB_PATH)
+            if not categories:
+                await update.message.reply_text(
+                    "Категорий нет 👀", reply_markup=MAIN_KEYBOARD
+                )
+                return
+            context.user_data["step"] = "rename_select"
+            keyboard = ReplyKeyboardMarkup(
+                [[c["name"]] for c in categories], resize_keyboard=True
+            )
+            await update.message.reply_text(
+                "Что переименовать? 🗂", reply_markup=keyboard
+            )
+            return
+
+        if text == "Удалить категорию 🗑️":
+            categories = list_categories(DB_PATH)
+            if not categories:
+                await update.message.reply_text(
+                    "Категорий нет 👀", reply_markup=MAIN_KEYBOARD
+                )
+                return
+            context.user_data["step"] = "delete_select"
+            keyboard = ReplyKeyboardMarkup(
+                [[c["name"]] for c in categories], resize_keyboard=True
+            )
+            await update.message.reply_text(
+                "Что удалить? 🗂", reply_markup=keyboard
             )
             return
 

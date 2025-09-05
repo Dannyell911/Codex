@@ -59,6 +59,7 @@ def update_category(category_id: int, name: str, db_path: Path = DB_PATH) -> Non
 
 def delete_category(category_id: int, db_path: Path = DB_PATH) -> None:
     with connect(db_path) as conn:
+        conn.execute("DELETE FROM transactions WHERE category_id=?", (category_id,))
         conn.execute("DELETE FROM categories WHERE id=?", (category_id,))
 
 
